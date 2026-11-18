@@ -1,0 +1,8 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel>
+    <Button Content="Submit" Focusable="False" IsTabStop="False" />
+    <TextBox FocusVisualStyle="{x:Null}" />
+    <ListBox VirtualizingPanel.IsVirtualizing="False" />
+  </StackPanel>
+</Window>

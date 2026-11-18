@@ -205,3 +205,65 @@ test("--platform overrides the detected project kind", () => {
   const found = new Set(scan([path.join(fixtures, "slop", "web")], { platform: "mobile" }).findings.map((f) => f.rule));
   assert.ok(found.has("hover-only"));
 });
+
+const fs = require("fs");
+const os = require("os");
+
+test("desktop XAML rules are dialect-aware and preserve line locations", () => {
+  const wpf = [
+    '<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">',
+    '  <Button Content="Submit" Focusable="False" IsTabStop="false" />',
+    '  <ListBox VirtualizingPanel.IsVirtualizing="False" />',
+    '  <TextBox FocusVisualStyle="{x:Null}" />',
+    '</Window>',
+  ].join("\n");
+  const found = scanSource(wpf, "MainWindow.xaml");
+  assert.strictEqual(found.length, 5);
+  assert.strictEqual(found.find((f) => f.rule === "xaml-virtualization-disabled").line, 3);
+  assert.strictEqual(found.find((f) => f.rule === "xaml-focus-visual-removed").line, 4);
+  const avalonia = '<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button FocusAdorner="{x:Null}" Focusable="false" /></Window>';
+  assert.deepStrictEqual(scanSource(avalonia, "MainWindow.axaml").map((f) => f.rule).sort(),
+    ["xaml-focus-disabled", "xaml-focus-visual-removed"]);
+  assert.deepStrictEqual(scanSource('<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"><Button Focusable="False" /></ContentPage>', "Page.xaml"), []);
+});
+
+test("desktop XAML avoids comments, arbitrary attributes, bindings, decorative controls and custom tags", () => {
+  const src = [
+    '<Window xmlns="https://github.com/avaloniaui" xmlns:local="clr-namespace:Demo">',
+    '  <!-- <Button Focusable="False" /> -->',
+    '  <![CDATA[<Button IsTabStop="False" />]]>',
+    '  <Button Content="Save project" Tag=" IsTabStop=\'False\' " Focusable="{Binding CanFocus}" />',
+    '  <TextBlock Focusable="False" />',
+    '  <local:Button Focusable="False" />',
+    '  <Button Focusable="True" IsTabStop="True" />',
+    '  <!-- unslopovich-ignore xaml-tab-stop-disabled -->',
+    '  <Button IsTabStop="False" />',
+    '</Window>',
+  ].join("\n");
+  assert.deepStrictEqual(scanSource(src, "MainWindow.axaml"), []);
+});
+
+test("desktop XAML discovery skips generated bin and obj markup", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "unslop-xaml-"));
+  try {
+    const src = '<Window xmlns="https://github.com/avaloniaui"><Button Content="Submit" /></Window>';
+    fs.writeFileSync(path.join(root, "MainWindow.axaml"), src);
+    for (const dir of ["bin", "obj"]) {
+      fs.mkdirSync(path.join(root, dir));
+      fs.writeFileSync(path.join(root, dir, "Generated.axaml"), src);
+    }
+    fs.writeFileSync(path.join(root, "Other.xaml"), '<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"><Button Content="Submit" /></ContentPage>');
+    const result = scan([root]);
+    assert.strictEqual(result.filesScanned, 1);
+    assert.deepStrictEqual(result.findings.map((f) => f.rule), ["xaml-vague-button"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("desktop XAML checks root controls and respects nested default namespaces", () => {
+  const root = '<Button xmlns="https://github.com/avaloniaui" Focusable="False" />';
+  assert.deepStrictEqual(scanSource(root, "Root.axaml").map((f) => f.rule), ["xaml-focus-disabled"]);
+  const mixed = '<Window xmlns="https://github.com/avaloniaui"><Custom xmlns="clr-namespace:Demo"><Button Focusable="False" /></Custom><Button IsTabStop="False" /></Window>';
+  assert.deepStrictEqual(scanSource(mixed, "Window.axaml").map((f) => f.rule), ["xaml-tab-stop-disabled"]);
+});

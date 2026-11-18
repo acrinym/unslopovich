@@ -17,7 +17,7 @@
   <a href="https://github.com/erkamyaman/unslopovich"><img src="https://img.shields.io/github/stars/erkamyaman/unslopovich?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center">5,008,684 app reviews read · 1 purple gradient found · 31 detector rules · one command</p>
+<p align="center">5,008,684 app reviews read · 1 purple gradient found · 36 detector rules · one command</p>
 
 <p align="center"><a href="research/README.md">The study behind it</a>: what people actually complain about, with the method and the code.</p>
 
@@ -131,7 +131,7 @@ The chart lives in `.unslopovich/chart.md`. It's where you tell the doctor that 
 
 ## The detector
 
-Thirty-one rules that read SwiftUI, UIKit, Compose, Android XML, React Native, Flutter, Ionic, React, Vue, Svelte, Astro, HTML, CSS, and Tailwind classes. No model, no network, no dependencies. The skill runs it for you, and it works on its own too:
+Thirty-six rules that read SwiftUI, UIKit, Compose, Android XML, React Native, Flutter, Ionic, React, Vue, Svelte, Astro, HTML, CSS, Tailwind classes, and Avalonia/WPF XAML. No model, no network, no dependencies. The skill runs it for you, and it works on its own too:
 
 ```bash
 npx unslopovich detect src/
@@ -153,6 +153,8 @@ Exit code `2` means findings, so it can gate a pull request. Silence one line wi
 
 It reads code, not screens. Most of what users complain about, a moved button, a popup in the way, a slow list, only shows up in the running app, which is why the skill looks at that first.
 
+Desktop XAML scans check explicit keyboard focus and tab-stop opt-outs, cleared default focus visuals, explicit WPF virtualization opt-outs and vague button content. They are static review leads, not resolved runtime accessibility or binding checks.
+
 ## Bedside manner
 
 > Three gradients, two hamburgers, no back button. I have questions.
@@ -168,6 +170,8 @@ Sample verdicts. Yours may be worse.
 **Mobile:** SwiftUI, UIKit, Jetpack Compose, React Native, Expo, Flutter, Ionic, Capacitor, Angular Native, and NativeScript.
 
 **Web:** React, Next.js, Vue, Nuxt, Svelte, Astro, Angular, and plain HTML and CSS, Tailwind and shadcn/ui included.
+
+**Desktop:** Avalonia and WPF XAML/AXAML (static markup checks and desktop review guidance).
 
 It reads your theme, finds the problems, fixes the shared components first, and uses your platform's native building blocks. It won't move your users' favorite button without asking.
 

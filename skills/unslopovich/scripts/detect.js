@@ -8,6 +8,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { xamlRules, xamlDialect } = require("./xaml.js");
 
 const VERSION = 1;
 
@@ -26,6 +27,8 @@ const STACK_BY_EXT = {
   ".astro": "web",
   ".html": "web",
   ".xml": "xml",
+  ".axaml": "xaml",
+  ".xaml": "xaml",
   ".css": "css",
   ".scss": "css",
 };
@@ -90,11 +93,11 @@ function blankComments(text, stack) {
   const blank = (from, to) => {
     for (let i = from; i < to; i++) if (out[i] !== "\n") out[i] = " ";
   };
-  if (stack === "xml" || stack === "web") {
-    const re = /<!--[\s\S]*?-->/g;
+  if (stack === "xml" || stack === "xaml" || stack === "web") {
+    const re = stack === "xaml" ? /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g : /<!--[\s\S]*?-->/g;
     let m;
     while ((m = re.exec(text))) blank(m.index, m.index + m[0].length);
-    if (stack === "xml") return out.join("");
+    if (stack === "xml" || stack === "xaml") return out.join("");
   }
   let i = 0;
   let quote = null;
@@ -788,6 +791,8 @@ const rules = [
   },
 ];
 
+rules.push(...xamlRules);
+
 // ---------- scanning ----------
 
 function loadConfig(root) {
@@ -844,7 +849,7 @@ function projectKind(dir) {
   return kind;
 }
 
-function walk(target, opts, out = []) {
+function walk(target, opts, out = [], root = target) {
   let stat;
   try {
     stat = fs.statSync(target);
@@ -860,11 +865,12 @@ function walk(target, opts, out = []) {
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
       if (!opts.includeTests && TEST_DIR.test(entry.name)) continue;
-      walk(full, opts, out);
+      walk(full, opts, out, root);
     } else if (entry.isFile()) {
       if (!STACK_BY_EXT[path.extname(entry.name).toLowerCase()]) continue;
       if (!opts.includeTests && TEST_FILE.test(entry.name)) continue;
       if (/\.(?:min|d)\.(?:js|ts)$/.test(entry.name)) continue;
+      if (STACK_BY_EXT[path.extname(entry.name).toLowerCase()] === "xaml" && path.relative(root, full).split(path.sep).some((part) => /^(?:bin|obj)$/i.test(part))) continue;
       out.push(full);
     }
   }
@@ -889,6 +895,8 @@ function scanSource(text, file, options = {}) {
   if (!stack) return [];
   if (stack === "xml" && !/<(?:LinearLayout|ConstraintLayout|TextView|FrameLayout|RelativeLayout|manifest|application|shape|gradient|resources|androidx\.)/.test(text)) return [];
   const code = blankComments(text, stack);
+  const dialect = stack === "xaml" ? xamlDialect(code) : null;
+  if (stack === "xaml" && !dialect) return [];
   const starts = lineStarts(text);
   const lines = text.split("\n");
   const ignoreRules = new Set(options.ignoreRules || []);
@@ -897,9 +905,11 @@ function scanSource(text, file, options = {}) {
   for (const rule of rules) {
     if (ignoreRules.has(rule.id)) continue;
     if (rule.stacks && !rule.stacks.includes(stack)) continue;
+    // Desktop markup uses its own narrowly scoped rules, not mobile/web regexes.
+    if (stack === "xaml" && !rule.stacks?.includes("xaml")) continue;
     if (rule.platforms && kind !== "unknown" && !rule.platforms.includes(kind)) continue;
     const seen = new Set();
-    for (const index of rule.find({ code, stack, file })) {
+    for (const index of rule.find({ code, stack, file, dialect })) {
       const line = lineAt(starts, index);
       if (seen.has(line) || ignoredByComment(lines, line, rule.id)) continue;
       seen.add(line);
@@ -937,6 +947,7 @@ function scan(targets, opts = {}) {
         continue;
       }
       if (text.length > 1_000_000) continue;
+      if (STACK_BY_EXT[path.extname(file).toLowerCase()] === "xaml" && !xamlDialect(blankComments(text, "xaml"))) continue;
       filesScanned++;
       const kind = opts.platform || projectKind(path.dirname(file));
       findings.push(...scanSource(text, rel, { ignoreRules, kind }));
@@ -980,7 +991,7 @@ function listRules() {
 
 const USAGE = `Usage: unslopovich detect [paths...] [--json] [--platform mobile|web] [--ignore rule,rule] [--include-tests] [--list-rules]
 
-Scans mobile and web source for generated-looking UI, website-in-a-phone patterns,
+Scans mobile, web and supported desktop XAML source for generated-looking UI, website-in-a-phone patterns,
 and accessibility and motion defaults. The platform comes from the nearest
 package.json; --platform overrides it.
 Exit code: 0 clean, 2 findings, 1 error.
